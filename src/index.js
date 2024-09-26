@@ -1,143 +1,143 @@
+// For streamlined VR development install the WebXR emulator extension
+// https://github.com/MozillaReality/WebXR-emulator-extension
+
+import '@kitware/vtk.js/favicon';
+
+// Load the rendering pieces we want to use (for both WebGL and WebGPU)
 import '@kitware/vtk.js/Rendering/Profiles/Geometry';
-import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
-import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
-import vtkXMLPolyDataReader from '@kitware/vtk.js/IO/XML/XMLPolyDataReader';
+import vtkCalculator from '@kitware/vtk.js/Filters/General/Calculator';
+import vtkConeSource from '@kitware/vtk.js/Filters/Sources/ConeSource';
+import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkWebXRRenderWindowHelper from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import { AttributeTypes } from '@kitware/vtk.js/Common/DataModel/DataSetAttributes/Constants';
+import { FieldDataTypes } from '@kitware/vtk.js/Common/DataModel/DataSet/Constants';
+import { XrSessionTypes } from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper/Constants';
 
-// Definición de colores para los actores
-const color_rgb = [
-    [1.000000, 0.000000, 0.000000],  // Rojo
-    [1.000000, 0.560784, 0.941176],  // Rosa
-    [0.000000, 1.000000, 0.000000],  // Verde
-    [0.000000, 0.000000, 1.000000],  // azul
-    [2.550000, 1.650000, 0.000000],  // naranja
-    [1.020000, 0.000000, 1.610000],  // morado
-];
+// Force DataAccessHelper to have access to various data source
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/HtmlDataAccessHelper';
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/HttpDataAccessHelper';
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/JSZipDataAccessHelper';
 
-// Ruta base para los archivos VTP
-const vtp_path = "./vtps/";
+import vtkResourceLoader from '@kitware/vtk.js/IO/Core/ResourceLoader';
 
-// Array con las rutas de los archivos VTP
-const vtpFiles = [
-    vtp_path + 'cow.vtp',
-    vtp_path + 'earth.vtp',
-    vtp_path + 'estructura.vtp',
-    vtp_path + 'estructura_1.vtp',
-    vtp_path + 'estructura_2.vtp',
-    vtp_path + 'estructura_3.vtp',
-];
+// Custom UI controls, including button to start XR session
+import controlPanel from './controller.html';
+//console.log(controlPanel);  // Verifica si se está cargando correctamente
 
-// Crear la ventana de renderizado a pantalla completa
-const fullScreenRenderWindow = vtkFullScreenRenderWindow.newInstance({
-    rootContainer: document.getElementById('container'),
-    containerStyle: { width: '100%', height: '100%' },
+// Dynamically load WebXR polyfill from CDN for WebVR and Cardboard API backwards compatibility  
+
+
+if (navigator.xr === undefined) {
+  vtkResourceLoader
+    .loadScript(
+      'https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.js'
+    )
+    .then(() => {
+      // eslint-disable-next-line no-new, no-undef
+      new WebXRPolyfill();
+    });
+}
+
+// ----------------------------------------------------------------------------
+// Standard rendering code setup
+// ----------------------------------------------------------------------------
+
+const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
+  background: [0, 0, 0],
 });
-const renderer = fullScreenRenderWindow.getRenderer();
-const renderWindow = fullScreenRenderWindow.getRenderWindow();
+const renderer = fullScreenRenderer.getRenderer();
+const renderWindow = fullScreenRenderer.getRenderWindow();
+const XRHelper = vtkWebXRRenderWindowHelper.newInstance({
+  renderWindow: fullScreenRenderer.getApiSpecificRenderWindow(),
+});
 
-// Array para almacenar los actores (objetos 3D) cargados en la escena
-const actors = [];
+// ----------------------------------------------------------------------------
+// Example code
+// ----------------------------------------------------------------------------
+// create a filter on the fly, sort of cool, this is a random scalars
+// filter we create inline, for a simple cone you would not need
+// this
+// ----------------------------------------------------------------------------
 
-// Función para cargar archivos VTP
-function loadVTP() {
-    vtpFiles.forEach((file, index) => {
-      console.log("file: " + file + " index: " + index); // para ver como se estan cargadon los vtp
-        const reader = vtkXMLPolyDataReader.newInstance();
-        const mapper = vtkMapper.newInstance();
-        const actor = vtkActor.newInstance();
+const coneSource = vtkConeSource.newInstance({ height: 100.0, radius: 50 });
+const filter = vtkCalculator.newInstance();
 
-        actor.setMapper(mapper);
-        actor.getProperty().setColor(color_rgb[index]);
-        actor.getProperty().setOpacity(1.0);
+filter.setInputConnection(coneSource.getOutputPort());
+// filter.setFormulaSimple(FieldDataTypes.CELL, [], 'random', () => Math.random());
+filter.setFormula({
+  getArrays: (inputDataSets) => ({
+    input: [],
+    output: [
+      {
+        location: FieldDataTypes.CELL,
+        name: 'Random',
+        dataType: 'Float32Array',
+        attribute: AttributeTypes.SCALARS,
+      },
+    ],
+  }),
+  evaluate: (arraysIn, arraysOut) => {
+    const [scalars] = arraysOut.map((d) => d.getData());
+    for (let i = 0; i < scalars.length; i++) {
+      scalars[i] = Math.random();
+    }
+  },
+});
 
-        mapper.setInputConnection(reader.getOutputPort());
+const mapper = vtkMapper.newInstance();
+mapper.setInputConnection(filter.getOutputPort());
 
-        reader.setUrl(file).then(() => {
-            reader.loadData().then(() => {
-                renderer.addActor(actor);
-                actors[index] = actor;
+const actor = vtkActor.newInstance();
+actor.setMapper(mapper);
+actor.setPosition(0.0, 0.0, -20.0);
 
-                renderer.resetCamera();
-                renderWindow.render();
-            });
-        }).catch((error) => {
-            console.error(`Error al cargar el archivo VTP: ${file}`, error);
-        });
-    });
-}
+renderer.addActor(actor);
+renderer.resetCamera();
+renderWindow.render();
 
-// Función para generar el contenido del panel de control dinámicamente
-function generateControlPanel() {
-  
+// -----------------------------------------------------------
+// UI control handling
+// -----------------------------------------------------------
 
-    vtpFiles.forEach((file, index) => {
-        // Crear un checkbox para cada archivo .vtp
-        const checkbox = document.createElement('input'); //tipo de entrada input tipo checkbox
-        checkbox.type = 'checkbox';
-        checkbox.id = `checkboxVTP-${index}`;  //
-        checkbox.checked = true;
+fullScreenRenderer.addController(controlPanel);
+const representationSelector = document.querySelector('.representations');
+const resolutionChange = document.querySelector('.resolution');
+const vrbutton = document.querySelector('.vrbutton');
 
-        // Crear las letras que aparecen a lado de cada checkbox
-        const label = document.createElement('label');
-        label.htmlFor = `checkboxVTP-${index}`;
-        // escribe lo que viene guardado en "file" a partir de'/'  
-        const tmp_array = file.split('/'); //split separa cada elemento en base al caracter que se defina en este caso "/" y te regresa un arreglo ejemplo: ./vtps/cow.vtp = [.,vtps,cow.vtp]
-        label.textContent = `Mostrar ${tmp_array.pop()}`; //pop regresa el ultimo elemento del arreglo y lo elimina ejemplo:[.,vtps,cow.vtp] pop [.,vtps]
+representationSelector.addEventListener('change', (e) => {
+  const newRepValue = Number(e.target.value);
+  actor.getProperty().setRepresentation(newRepValue);
+  renderWindow.render();
+});
 
-        // Crear un slider para la opacidad de cada archivo .vtp
-        const opacitySlider = document.createElement('input');
-        opacitySlider.type = 'range';
-        opacitySlider.id = `opacityVTP-${index}`;
-        opacitySlider.min = "0";
-        opacitySlider.max = "1";
-        opacitySlider.step = "0.1";
-        opacitySlider.value = "1";
+resolutionChange.addEventListener('input', (e) => {
+  const resolution = Number(e.target.value);
+  //console.log("Resultado: " + Number);
+  coneSource.setResolution(resolution);
+  renderWindow.render();
+});
 
-        // Crear las letras para el slider
-        const opacityLabel = document.createElement('label');
-        opacityLabel.htmlFor = `opacityVTP-${index}`;
-        opacityLabel.textContent = ` Opacidad de ${file.split('/').pop()}: `; //lo mismo que lo anterior solo que junto
+vrbutton.addEventListener('click', (e) => {
+    if (vrbutton.textContent === 'Send To VR'){
+        XRHelper.startXR(XrSessionTypes.HmdVR);
+        vrbutton.textContent = 'Return From VR';
+    } else {
+        XRHelper.stopXR();
+        vrbutton.textContent = 'Send To VR'
+    }
+    console.log("Botón clickeado"); // Asegúrate de que esto se imprima
+});
 
-        // Añadir los elementos al control panel
-        const controlPanel = document.getElementById("controlPanel");
-        
-        controlPanel.appendChild(checkbox);
-        controlPanel.appendChild(label);
-        controlPanel.appendChild(document.createElement('br'));
-        controlPanel.appendChild(opacityLabel);
-        controlPanel.appendChild(opacitySlider);
-        controlPanel.appendChild(document.createElement('br'));
-        controlPanel.appendChild(document.createElement('br'));
-    });
-}
+// -----------------------------------------------------------
+// Make some variables global so that you can inspect and
+// modify objects in your browser's developer console:
+// -----------------------------------------------------------
 
-// Función para crear controladores de eventos para el panel de control
-function createControlEvents() {
-    vtpFiles.forEach((_, index) => {   //forEach esta regresando el valor de File pero no se utiliza por lo que se define un "_" por convenio
-        // Checkbox para controlar la visibilidad
-        const checkbox = document.getElementById(`checkboxVTP-${index}`);
-        checkbox.addEventListener('change', (event) => {
-            const actor = actors[index];
-            if (event.target.checked) {
-                renderer.addActor(actor);  // Mostrar actor
-            } else {
-                renderer.removeActor(actor);  // Ocultar actor
-            }
-            renderer.resetCamera();  // Ajustar la cámara
-            renderWindow.render();  // Volver a renderizar la escena
-        });
-
-        // Rango para controlar la opacidad
-        const opacitySlider = document.getElementById(`opacityVTP-${index}`);
-        opacitySlider.addEventListener('input', (event) => {  //Este event listener es input por el tipo de dato que recibe el slider
-            const actor = actors[index];
-            actor.getProperty().setOpacity(Number(event.target.value));
-            renderWindow.render();  // Volver a renderizar la escena
-        });
-    });
-}
-
-// Ejecutar las funciones para cargar los archivos VTP y crear los eventos del panel de control
-loadVTP();
-generateControlPanel();
-createControlEvents();
+global.source = coneSource;
+global.mapper = mapper;
+global.actor = actor;
+global.renderer = renderer;
+global.renderWindow = renderWindow;
