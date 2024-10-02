@@ -12,6 +12,7 @@ import vtkConeSource from '@kitware/vtk.js/Filters/Sources/ConeSource';
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkWebXRRenderWindowHelper from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper';
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkURLExtract from '@kitware/vtk.js/Common/Core/URLExtract'; // Este es para la funcionalidad de AR para definir si hay un dispositivo especifico o mobile AR
 import { AttributeTypes } from '@kitware/vtk.js/Common/DataModel/DataSetAttributes/Constants';
 import { FieldDataTypes } from '@kitware/vtk.js/Common/DataModel/DataSet/Constants';
 import { XrSessionTypes } from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper/Constants';
@@ -23,13 +24,10 @@ import '@kitware/vtk.js/IO/Core/DataAccessHelper/JSZipDataAccessHelper';
 
 import vtkResourceLoader from '@kitware/vtk.js/IO/Core/ResourceLoader';
 
-// Custom UI controls, including button to start XR session
+//Aqui vienen los botones para manejar las seciones
 import controlPanel from './controller.html';
-//console.log(controlPanel);  // Verifica si se está cargando correctamente
 
-// Dynamically load WebXR polyfill from CDN for WebVR and Cardboard API backwards compatibility  
-
-
+// Dynamically load WebXR polyfill from CDN for WebVR and Cardboard API backwards compatibility
 if (navigator.xr === undefined) {
   vtkResourceLoader
     .loadScript(
@@ -40,6 +38,13 @@ if (navigator.xr === undefined) {
       new WebXRPolyfill();
     });
 }
+
+// ----------------------------------------------------------------------------
+// Parse URL parameters (para saber si es AR o VR)
+// ----------------------------------------------------------------------------
+const userParams = vtkURLExtract.extractURLParameters();
+const requestedXrSessionType =
+  userParams.xrSessionType ?? XrSessionTypes.MobileAR; // Si no se define, se asume MobileAR
 
 // ----------------------------------------------------------------------------
 // Standard rendering code setup
@@ -57,16 +62,12 @@ const XRHelper = vtkWebXRRenderWindowHelper.newInstance({
 // ----------------------------------------------------------------------------
 // Example code
 // ----------------------------------------------------------------------------
-// create a filter on the fly, sort of cool, this is a random scalars
-// filter we create inline, for a simple cone you would not need
-// this
-// ----------------------------------------------------------------------------
 
 const coneSource = vtkConeSource.newInstance({ height: 100.0, radius: 50 });
 const filter = vtkCalculator.newInstance();
 
 filter.setInputConnection(coneSource.getOutputPort());
-// filter.setFormulaSimple(FieldDataTypes.CELL, [], 'random', () => Math.random());
+
 filter.setFormula({
   getArrays: (inputDataSets) => ({
     input: [],
@@ -103,32 +104,49 @@ renderWindow.render();
 // -----------------------------------------------------------
 
 fullScreenRenderer.addController(controlPanel);
-const representationSelector = document.querySelector('.representations');
-const resolutionChange = document.querySelector('.resolution');
-const vrbutton = document.querySelector('.vrbutton');
 
+// Botón para AR
+const arbutton = document.querySelector('.arbutton');
+arbutton.disabled = !XRHelper.getXrSupported();
+
+arbutton.addEventListener('click', (e) => {
+  if (arbutton.textContent === 'Start AR') {
+    XRHelper.startXR(XrSessionTypes.MobileAR); // Inicia sesión en AR
+    arbutton.textContent = 'Exit AR';
+  } else {
+    XRHelper.stopXR();
+    arbutton.textContent = 'Start AR';
+  }
+});
+
+// Botón para VR
+const vrbutton = document.querySelector('.vrbutton');
+vrbutton.addEventListener('click', (e) => {
+  if (vrbutton.textContent === 'Send To VR') {
+    console.log("Test: " + navigator.xr)  // pruebas
+    XRHelper.startXR(XrSessionTypes.HmdVR); // Inicia sesión en VR
+    vrbutton.textContent = 'Return From VR';
+  } else {
+    XRHelper.stopXR();
+    vrbutton.textContent = 'Send To VR';
+  }
+  console.log("Botón clickeado"); // pruebas
+});
+
+// Selector de representación (Points, Wireframe, Surface)
+const representationSelector = document.querySelector('.representations');
 representationSelector.addEventListener('change', (e) => {
   const newRepValue = Number(e.target.value);
-  actor.getProperty().setRepresentation(newRepValue);
+  actor.getProperty().setRepresentation(newRepValue); // Cambia la representación
   renderWindow.render();
 });
 
+// Control de resolución del cono
+const resolutionChange = document.querySelector('.resolution');
 resolutionChange.addEventListener('input', (e) => {
   const resolution = Number(e.target.value);
-  //console.log("Resultado: " + Number);
-  coneSource.setResolution(resolution);
+  coneSource.setResolution(resolution); // Cambia la resolución del cono
   renderWindow.render();
-});
-
-vrbutton.addEventListener('click', (e) => {
-    if (vrbutton.textContent === 'Send To VR'){
-        XRHelper.startXR(XrSessionTypes.HmdVR);
-        vrbutton.textContent = 'Return From VR';
-    } else {
-        XRHelper.stopXR();
-        vrbutton.textContent = 'Send To VR'
-    }
-    console.log("Botón clickeado"); // Asegúrate de que esto se imprima
 });
 
 // -----------------------------------------------------------

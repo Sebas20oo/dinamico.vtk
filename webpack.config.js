@@ -1,68 +1,48 @@
 const path = require('path');
-const autoprefixer = require('autoprefixer')
-const HtmlWebpackPlugin = require('html-webpack-plugin')
-
-
-
-// Optional if you want to load *.css and *.module.css files
-//var cssRules = require('@kitware/vtk.js/Utilities/config/dependency.js').webpack.css.rules;
-
+const autoprefixer = require('autoprefixer');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
-    entry: './src/index.js',
+    mode: 'production',  // Habilitar optimizaciones para producción
+    entry: './src/index.js',  // Archivo de entrada principal
     output: {
-        filename: 'index.js',
-        path: path.resolve(__dirname, 'dist'),
+        filename: 'bundle.js',  // Nombre del archivo de salida optimizado
+        path: path.resolve(__dirname, 'dist'),  // Carpeta de salida
+        clean: true,  // Limpiar la carpeta de salida antes de cada build
     },
     module: {
         rules: [
-		{ test: /\.html$/, loader: 'html-loader' },
-        { test: /\.(png|jpg)$/, type: 'asset' },
-        { test: /\.svg$/, type: 'asset/source' },
-        { test: /\.css$/, use: ['style-loader','css-loader']},
-
-        {
-            test: /\.(scss)$/,
-            use: [
+            { test: /\.html$/, loader: 'html-loader' },
+            { test: /\.(png|jpg)$/, type: 'asset' },
+            { test: /\.svg$/, type: 'asset/source' },
+            { test: /\.css$/, use: ['style-loader', 'css-loader'] },
             {
-                // Adds CSS to the DOM by injecting a `<style>` tag
-                loader: 'style-loader'
+                test: /\.(scss)$/,
+                use: [
+                    { loader: 'style-loader' },  // Inyectar CSS al DOM
+                    { loader: 'css-loader' },  // Interpretar imports y URLs en CSS
+                    {
+                        loader: 'postcss-loader',
+                        options: {
+                            postcssOptions: {
+                                plugins: [autoprefixer],
+                            },
+                        },
+                    },
+                    { loader: 'sass-loader' },  // Compilar SCSS a CSS
+                ],
             },
-            {
-                // Interprets `@import` and `url()` like `import/require()` and will resolve them
-                loader: 'css-loader'
-            },
-            {
-                // Loader for webpack to process CSS with PostCSS
-                loader: 'postcss-loader',
-                options: {
-                postcssOptions: {
-                    plugins: [
-                    autoprefixer
-                    ]
-                }
-                }
-            },
-            {
-                // Loads a SASS/SCSS file and compiles it to CSS
-                loader: 'sass-loader'
-            },
-
-            ]
-        }
-
-        ]//.concat(vtkRules, cssRules),
+        ],
     },
     devServer: {
-        static: path.resolve(__dirname, 'dist'),
+        static: path.resolve(__dirname, 'dist'),  // Carpeta servida por el servidor de desarrollo
         port: 8080,
-        hot: true
-      },
-
-      plugins: [
-        new HtmlWebpackPlugin({ template: './dist/index.html' }),
-      ],
-      //devtool: 'source-map',
-      devtool: false
-    
-}
+        hot: true,
+    },
+    plugins: [
+        new HtmlWebpackPlugin({
+            template: './src/index.html',  // Plantilla HTML desde 'src'
+        }),
+    ],
+    devtool: false,  // Desactivar el source mapping en producción para reducir tamaño de archivo
+};

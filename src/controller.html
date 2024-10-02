@@ -1,12 +1,17 @@
 <table>
   <tr>
     <td>
-      <button  class='vrbutton' style="width: 100%" >Send To VR</button>
+      <button class='vrbutton' style="width: 100%" id="btn-vr">Send To VR</button>
     </td>
   </tr>
   <tr>
     <td>
-      <select  class='representations' style="width: 100%" >
+      <button class='arbutton' style="width: 100%" id="btn-ar">Start AR</button>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <select class='representations' style="width: 100%" id="selec">
         <option value='0'>Points</option>
         <option value='1'>Wireframe</option>
         <option value='2' selected>Surface</option>
@@ -15,7 +20,7 @@
   </tr>
   <tr>
     <td>
-      <input  class='resolution' type='range' min='4' max='80' value='6' />
+      <input class='resolution' type='range' min='4' max='80' value='6' id="res" />
     </td>
   </tr>
 </table>
