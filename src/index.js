@@ -10,9 +10,11 @@ import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
 import vtkCalculator from '@kitware/vtk.js/Filters/General/Calculator';
 import vtkConeSource from '@kitware/vtk.js/Filters/Sources/ConeSource';
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
-import vtkWebXRRenderWindowHelper from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper';
+import vtkWebXRRenderWindowHelper from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper'; // gestiona las funcionalidades de realidad virtual (VR) y realidad aumentada (AR) 
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
 import vtkURLExtract from '@kitware/vtk.js/Common/Core/URLExtract'; // Este es para la funcionalidad de AR para definir si hay un dispositivo especifico o mobile AR
+import vtkXMLPolyDataReader from '@kitware/vtk.js/IO/XML/XMLPolyDataReader'; // Este es para poder cargar los archivos .vtps
+import vtkResourceLoader from '@kitware/vtk.js/IO/Core/ResourceLoader'; // Este módulo se encarga de cargar recursos, como scripts aqui carga un "polyfill" para navegadores que no soportan WebXR 
 import { AttributeTypes } from '@kitware/vtk.js/Common/DataModel/DataSetAttributes/Constants';
 import { FieldDataTypes } from '@kitware/vtk.js/Common/DataModel/DataSet/Constants';
 import { XrSessionTypes } from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper/Constants';
@@ -22,11 +24,12 @@ import '@kitware/vtk.js/IO/Core/DataAccessHelper/HtmlDataAccessHelper';
 import '@kitware/vtk.js/IO/Core/DataAccessHelper/HttpDataAccessHelper';
 import '@kitware/vtk.js/IO/Core/DataAccessHelper/JSZipDataAccessHelper';
 
-import vtkResourceLoader from '@kitware/vtk.js/IO/Core/ResourceLoader';
 
-//Aqui vienen los botones para manejar las seciones
+
+// Aqui vienen los botones para manejar las seciones
 import controlPanel from './controller.html';
 
+// Cargar el polyfill de WebXR si es necesario
 // Dynamically load WebXR polyfill from CDN for WebVR and Cardboard API backwards compatibility
 if (navigator.xr === undefined) {
   vtkResourceLoader
@@ -38,6 +41,29 @@ if (navigator.xr === undefined) {
       new WebXRPolyfill();
     });
 }
+
+// Definir colores para los actores
+const color_rgb = [
+  [1.0, 0.0, 0.0],    // Rojo
+  [1.0, 0.56, 0.94],  // Rosa
+  [0.0, 1.0, 0.0],    // Verde
+  [0.0, 0.0, 1.0],    // Azul
+  [2.55, 1.65, 0.0],  // Naranja
+  [1.02, 0.0, 1.61],  // Morado
+];
+
+// Ruta base para los archivos VTP
+const vtp_path = "./vtps/";
+
+// Array con las rutas de los archivos VTP
+const vtpFiles = [
+  vtp_path + 'cow.vtp',
+  vtp_path + 'earth.vtp',
+  vtp_path + 'estructura.vtp',
+  vtp_path + 'estructura_1.vtp',
+  vtp_path + 'estructura_2.vtp',
+  vtp_path + 'estructura_3.vtp',
+];
 
 // ----------------------------------------------------------------------------
 // Parse URL parameters (para saber si es AR o VR)
@@ -59,53 +85,101 @@ const XRHelper = vtkWebXRRenderWindowHelper.newInstance({
   renderWindow: fullScreenRenderer.getApiSpecificRenderWindow(),
 });
 
-// ----------------------------------------------------------------------------
-// Example code
-// ----------------------------------------------------------------------------
+// Array para almacenar los actores (objetos 3D) cargados en la escena
+const actors = [];
 
-const coneSource = vtkConeSource.newInstance({ height: 100.0, radius: 50 });
-const filter = vtkCalculator.newInstance();
+// Función para cargar archivos VTP
+function loadVTP() {
+    vtpFiles.forEach((file, index) => {
+        console.log("file: " + file + " index: " + index); // para ver cómo se están cargando los vtp
+        const reader = vtkXMLPolyDataReader.newInstance();
+        const mapper = vtkMapper.newInstance();
+        const actor = vtkActor.newInstance();
 
-filter.setInputConnection(coneSource.getOutputPort());
+        actor.setMapper(mapper);
+        actor.getProperty().setColor(color_rgb[index]);
+        actor.getProperty().setOpacity(1.0);
 
-filter.setFormula({
-  getArrays: (inputDataSets) => ({
-    input: [],
-    output: [
-      {
-        location: FieldDataTypes.CELL,
-        name: 'Random',
-        dataType: 'Float32Array',
-        attribute: AttributeTypes.SCALARS,
-      },
-    ],
-  }),
-  evaluate: (arraysIn, arraysOut) => {
-    const [scalars] = arraysOut.map((d) => d.getData());
-    for (let i = 0; i < scalars.length; i++) {
-      scalars[i] = Math.random();
-    }
-  },
-});
+        mapper.setInputConnection(reader.getOutputPort());
 
-const mapper = vtkMapper.newInstance();
-mapper.setInputConnection(filter.getOutputPort());
+        reader.setUrl(file).then(() => {
+            reader.loadData().then(() => {
+                renderer.addActor(actor);
+                actors[index] = actor;
 
-const actor = vtkActor.newInstance();
-actor.setMapper(mapper);
-actor.setPosition(0.0, 0.0, -20.0);
+                renderer.resetCamera();
+                renderWindow.render();
+            });
+        }).catch((error) => {
+            console.error(`Error al cargar el archivo VTP: ${file}`, error);
+        });
+    });
+}
 
-renderer.addActor(actor);
-renderer.resetCamera();
-renderWindow.render();
+// Función para generar el contenido del panel de control dinámicamente
+function generateControlPanel() {
+  vtpFiles.forEach((file, index) => {
+    const checkbox = document.createElement('input'); // tipo de entrada input tipo checkbox
+    checkbox.type = 'checkbox';
+    checkbox.id = `checkboxVTP-${index}`;
+    checkbox.checked = true;
 
-// -----------------------------------------------------------
-// UI control handling
-// -----------------------------------------------------------
+    const label = document.createElement('label');
+    label.htmlFor = `checkboxVTP-${index}`;
+    label.textContent = `Mostrar ${file.split('/').pop()}`;
+
+    const opacitySlider = document.createElement('input');
+    opacitySlider.type = 'range';
+    opacitySlider.id = `opacityVTP-${index}`;
+    opacitySlider.min = "0";
+    opacitySlider.max = "1";
+    opacitySlider.step = "0.1";
+    opacitySlider.value = "1";
+
+    const opacityLabel = document.createElement('label');
+    opacityLabel.htmlFor = `opacityVTP-${index}`;
+    opacityLabel.textContent = ` Opacidad de ${file.split('/').pop()}: `;
+
+    const controlPanel = document.getElementById("controlPanel");
+
+    controlPanel.appendChild(checkbox);
+    controlPanel.appendChild(label);
+    controlPanel.appendChild(document.createElement('br'));
+    controlPanel.appendChild(opacityLabel);
+    controlPanel.appendChild(opacitySlider);
+    controlPanel.appendChild(document.createElement('br'));
+    controlPanel.appendChild(document.createElement('br'));
+  });
+}
+
+// Función para crear controladores de eventos para el panel de control
+function createControlEvents() {
+  vtpFiles.forEach((_, index) => {
+      const checkbox = document.getElementById(`checkboxVTP-${index}`);
+      checkbox.addEventListener('change', (event) => {
+          const actor = actors[index];
+          if (event.target.checked) {
+              renderer.addActor(actor);
+          } else {
+              renderer.removeActor(actor);
+          }
+          renderer.resetCamera();
+          renderWindow.render();
+      });
+
+      const opacitySlider = document.getElementById(`opacityVTP-${index}`);
+      opacitySlider.addEventListener('input', (event) => {
+          const actor = actors[index];
+          actor.getProperty().setOpacity(Number(event.target.value));
+          renderWindow.render();
+      });
+  });
+}
+
 
 fullScreenRenderer.addController(controlPanel);
 
-// Botón para AR
+// Botón para sesion AR
 const arbutton = document.querySelector('.arbutton');
 arbutton.disabled = !XRHelper.getXrSupported();
 
@@ -119,7 +193,7 @@ arbutton.addEventListener('click', (e) => {
   }
 });
 
-// Botón para VR
+// Botón para sesion VR
 const vrbutton = document.querySelector('.vrbutton');
 vrbutton.addEventListener('click', (e) => {
   if (vrbutton.textContent === 'Send To VR') {
@@ -137,25 +211,24 @@ vrbutton.addEventListener('click', (e) => {
 const representationSelector = document.querySelector('.representations');
 representationSelector.addEventListener('change', (e) => {
   const newRepValue = Number(e.target.value);
-  actor.getProperty().setRepresentation(newRepValue); // Cambia la representación
+  actors.forEach((actor) => {
+    actor.getProperty().setRepresentation(newRepValue); // Cambia la representación
+  });
   renderWindow.render();
 });
 
-// Control de resolución del cono
-const resolutionChange = document.querySelector('.resolution');
-resolutionChange.addEventListener('input', (e) => {
-  const resolution = Number(e.target.value);
-  coneSource.setResolution(resolution); // Cambia la resolución del cono
-  renderWindow.render();
-});
+// -----------------------------------------------------------
+// Ejecutar funciones para cargar VTPs y configurar controles
+// -----------------------------------------------------------
+loadVTP();
+generateControlPanel();
+createControlEvents();
 
 // -----------------------------------------------------------
 // Make some variables global so that you can inspect and
 // modify objects in your browser's developer console:
 // -----------------------------------------------------------
 
-global.source = coneSource;
-global.mapper = mapper;
-global.actor = actor;
+
 global.renderer = renderer;
 global.renderWindow = renderWindow;
